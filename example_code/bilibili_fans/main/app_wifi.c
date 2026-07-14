@@ -31,8 +31,10 @@ static char *app_wifi_get_bilibili_fans(const char *uid)
 {
     char *url = NULL;
     char *result = NULL;
-    asprintf(&url, "https://api.bilibili.com/x/relation/stat?vmid=%s", uid);
-    ESP_ERROR_CHECK_WITHOUT_ABORT(url == NULL);
+    if (asprintf(&url, "https://api.bilibili.com/x/relation/stat?vmid=%s", uid) < 0) {
+        ESP_LOGE(TAG, "Failed to allocate request URL");
+        return NULL;
+    }
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
@@ -41,8 +43,16 @@ static char *app_wifi_get_bilibili_fans(const char *uid)
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize HTTP client");
+        goto end;
+    }
 
     esp_err_t err = esp_http_client_open(client, 0);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "HTTP client open failed: %s", esp_err_to_name(err));
+        goto end;
+    }
     int content_length = esp_http_client_fetch_headers(client);
     if (esp_http_client_is_chunked_response(client)) {
         esp_http_client_get_chunk_length(client, &content_length);
@@ -53,6 +63,11 @@ static char *app_wifi_get_bilibili_fans(const char *uid)
         goto end;
     }
     result = (char *)malloc(content_length + 1);
+    if (result == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate response buffer");
+        goto end;
+    }
+
     int read = esp_http_client_read_response(client, result, content_length);
     if (read != content_length) {
         ESP_LOGE(TAG, "HTTP_ERROR: read=%d, length=%d", read, content_length);
@@ -65,9 +80,11 @@ static char *app_wifi_get_bilibili_fans(const char *uid)
 
 end:
     free(url);
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
-    return result != NULL ? result : NULL;
+    if (client != NULL) {
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+    }
+    return result;
 }
 
 static int cJSON_parse_follower(const char *json_data)
@@ -75,14 +92,15 @@ static int cJSON_parse_follower(const char *json_data)
     cJSON* root = cJSON_Parse(json_data);
     if (root == NULL) {
         printf("Error parsing JSON data.\n");
-        return NULL;
+        return -1;
     }
     cJSON* data = cJSON_GetObjectItem(root, "data");
     if (data != NULL) {
         cJSON* follower = cJSON_GetObjectItem(data, "follower");
-        if (follower != NULL) {
+        if (cJSON_IsNumber(follower)) {
+            int follower_count = follower->valueint;
             cJSON_Delete(root);
-            return follower->valueint;
+            return follower_count;
         } else {
             printf("Error extracting 'follower' parameter.\n");
         }
@@ -90,7 +108,7 @@ static int cJSON_parse_follower(const char *json_data)
         printf("Error extracting 'data' object.\n");
     }
     cJSON_Delete(root);
-    return NULL;
+    return -1;
 }
 #include "esp_sparkbot_bsp.h"
 #include "iot_button.h"
@@ -102,9 +120,13 @@ static void http_get_task(void *pvParameters)
     char *text = NULL;
     touch_button_message_t msg = {0};
     while (1) {
-        const char *result = app_wifi_get_bilibili_fans(CONFIG_BILIBILI_ACCOUNT_NUMBER);
+        char *result = app_wifi_get_bilibili_fans(CONFIG_BILIBILI_ACCOUNT_NUMBER);
         if (result != NULL) {
             int fans = cJSON_parse_follower(result);
+            if (fans < 0) {
+                free(result);
+                continue;
+            }
             asprintf(&text, "祝贺您获得 %d 粉丝", fans);
             lv_label_set_text(ui_LabelFansCount, text);
             free(text);
@@ -118,6 +140,7 @@ static void http_get_task(void *pvParameters)
             //     button_handler(NULL, &msg, (void*)1);
             // }
             g_fans_prvs = fans;
+            free(result);
         }
         /* Refresh every 2 seconds */
         vTaskDelay(2000 / portTICK_PERIOD_MS);
