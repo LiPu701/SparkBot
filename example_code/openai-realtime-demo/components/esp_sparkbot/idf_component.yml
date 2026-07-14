@@ -1,0 +1,24 @@
+dependencies:
+  button:
+    public: true
+    version: '>=2.5,<4.0'
+  esp_codec_dev:
+    public: true
+    version: ==1.1.0
+  espressif/esp_lvgl_port:
+    public: true
+    version: 2.4.1
+  espressif/i2c_bus:
+    public: true
+    version: 1.1.*
+  idf: '>=5.0'
+description: Board Support Package (BSP) for ESP32-SparkBot
+repository: git://github.com/espressif2022/esp_sparkbot.git
+repository_info:
+  commit_sha: 212d8bcc7aeed19b31f6b057e02d4bf84492eb1f
+  path: .
+tags:
+- bsp
+targets:
+- esp32s3
+version: 1.0.0

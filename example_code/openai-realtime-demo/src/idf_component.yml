@@ -1,0 +1,16 @@
+dependencies:
+  idf:
+    version: ">=4.1.0"
+
+  espressif/es8311: "^1.0.0~1"
+
+  78/esp-opus:
+    version: "^1.0.4"
+
+  sepfy/srtp:
+    version: "^2.3.0"
+
+  espressif2022/esp_sparkbot:
+    version: "*"
+
+  lvgl/lvgl: 8.*
